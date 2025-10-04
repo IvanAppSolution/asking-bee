@@ -1,103 +1,207 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useCompletion } from "@ai-sdk/react";
+import React, { FormEvent, useEffect, useTransition } from "react";
+import { useScore } from "./contexts/ScoreContext";
+
+export default function CompletionStreamPage() {
+  const { currentScore, totalQuestions, incrementScore, setCurrentScore, setTotalQuestions, levelSelected } = useScore();
+
+  const {
+    completion: generatedQuestionCompletion,
+    setInput: setInputGenerateQuestion,
+    handleSubmit: handleSubmitGenerateQuestion,
+    isLoading,
+    error,
+  } = useCompletion({
+    api: "/api/generate-question",
+    onFinish: (prompt, completion) => {
+      console.log('Generated Question Completion:', completion);
+      setGeneratedNewQuestion(completion);
+    }
+  });
+
+  const {
+    completion: reviewCompletion,    
+    setCompletion: setReviewCompletion,
+    setInput: setAnswerInput,
+    handleInputChange: handleReviewAnswerInputChange,
+    handleSubmit: handleSubmitReviewAnswer,
+    isLoading: isLoadingReview,
+    error: reviewError,
+    stop: reviewStop,    
+  } = useCompletion({
+    api: "/api/review-answer",
+    // onFinish: (completion) => { },
+  }, );
+
+  const [inputAnswerText, setInpuAnswerText] =  React.useState('');
+  const [generatedNewQuestion, setGeneratedNewQuestion] =  React.useState('');
+  const [isAnswerCorrect, setIsAnswerCorrect] =  React.useState<boolean | null>(null);
+  const [isStarted, setIsStarted] =  React.useState(false);
+  const [isPending, startTransition] = useTransition();
+
+  const handleFormSubmit = (event: FormEvent<HTMLFormElement>): void => {
+    event.preventDefault();
+ 
+    const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | HTMLInputElement;
+    console.log('Form submitted submitter.name:', submitter.name);
+    if (submitter.name === "generate") {
+      console.log('generating question..'); 
+      setReviewCompletion('');
+      setIsStarted(true);
+      setTotalQuestions(totalQuestions + 1);
+      setAnswerInput('');
+      setIsAnswerCorrect(null);
+      setInpuAnswerText('');
+      handleSubmitGenerateQuestion(event);
+    } else {      
+      const reviewAnswer = generatedNewQuestion + " review my answer quickly:" + inputAnswerText + ". And please indicate in last sentence if my answer is correct or incorrect.";
+      console.log('review answer:', reviewAnswer);
+      setAnswerInput(reviewAnswer);
+      
+      startTransition(() => {
+        handleSubmitReviewAnswer(event);
+      });
+    }  };
+
+  const handleReset = () => {
+    setCurrentScore(0);
+    setTotalQuestions(0);
+    setIsAnswerCorrect(null);
+    setInpuAnswerText(''); 
+    setReviewCompletion('');
+    setGeneratedNewQuestion('');
+
+  };
+
+  useEffect(() => {
+    if (levelSelected === 1) {
+      console.log('Level 1 selected');
+      setInputGenerateQuestion('generate a single question for a Primary 5 student. The question should be straightforward and no introduction.');
+    } else if (levelSelected === 2) {
+      console.log('Level 2 selected');
+      setInputGenerateQuestion('generate single math word problem suitable for a Primary 5 student.');
+    } else if (levelSelected === 3) {
+      console.log('Level 3 selected');
+      setInputGenerateQuestion('generate single math word problem or general information quiz suitable for a Primary 5 student.'); // Please do not include my question in the generated question.
+    }
+   
+  },[levelSelected, setInputGenerateQuestion]);
+
+  useEffect(() => {
+    if (isLoadingReview === false && reviewCompletion) {
+      console.log('Clearing answer text after review completion');
+      const isCorrect = reviewCompletion.toLowerCase().slice(-15).includes('correct');
+      setIsAnswerCorrect(isCorrect);
+      
+      // Update score if answer is correct
+      if (isCorrect) {
+        incrementScore();
+        console.log('Answer was correct! Score incremented.');
+      } else {
+        console.log('Answer was incorrect. Score not changed.');
+      }
+      
+      setInpuAnswerText('');
+    }
+  }, [isLoadingReview]); //, incrementScore, setIsAnswerCorrect
+
+  // useEffect(() => {
+  //   console.log('Generated Question:', generatedQuestionCompletion);
+  //   setGeneratedNewQuestion(generatedQuestionCompletion || '');
+  // }, [generatedQuestionCompletion]);
+
+  useEffect(() => {
+    if (totalQuestions === 0) {
+      setIsStarted(false);
+    } else if (totalQuestions == 1) {
+      setIsStarted(true)
+      setIsAnswerCorrect(null); // Reset correctness indicator for new question
+      setInpuAnswerText(''); // Clear previous answer
+    }
+  }, [totalQuestions]);
+
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+    <div className="flex flex-col w-full max-w-lg py-8 mx-auto">
+      {/* Score Management Controls */}
+      {isStarted ? <div className="mb-4 p-4 bg-gray-100 rounded-lg">
+        <div className="flex justify-between items-center">
+          <div className="flex gap-2">            
+            <span className="text-sm self-center">Quiz: {totalQuestions} </span>
+          </div>
+          <div>
+            <span className="text-lg font-semibold">Score: {currentScore}</span>
+          </div>
+          <button
+            onClick={handleReset}
+            className="bg-gray-400 text-white px-3 py-1 rounded hover:bg-red-600 transition-colors text-sm"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+            Reset Quiz
+          </button>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
+        {isAnswerCorrect !== null && (
+          <div className={`text-center mt-2 font-medium ${isAnswerCorrect ? 'text-green-600' : 'text-red-600'}`}>
+            Your answer is {isAnswerCorrect ? 'CORRECT ✓' : 'INCORRECT ✗'}
+          </div>
+        )}
+      </div> : <div className="mb-4 p-4 bg-gray-100 rounded-lg text-center">
+        Click &quot;Start&quot; to begin the quiz!  
+      </div>}
+   
+      <div className="flex flex-col w-full max-w-lg pt-8 pb-32 mx-auto stretch">
+        {error && <div className="text-red-500 mb-4">{error.message}</div>}
+        {reviewError && <div className="text-red-500 mb-4">{reviewError.message}</div>}
+
+
+        {isLoading && !generatedQuestionCompletion && <div>Loading...</div>}
+        {generatedQuestionCompletion && <div className="whitespace-pre-wrap">{generatedQuestionCompletion}</div>}
+
+        {isLoadingReview && !reviewCompletion && <div>Reviewing...</div>}
+        {reviewCompletion && <div className="whitespace-pre-wrap">{reviewCompletion}</div>}
+
+        <form
+          onSubmit={handleFormSubmit}
+          className="fixed bg-white bottom-0 w-full max-w-lg mx-auto left-0 right-0 p-4  border-t border-gray-200  "
         >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+          <div className="flex gap-2 items-start">
+            <div className="flex flex-column items-center align-bottom">
+              <button
+                  type="submit"
+                  name="generate"
+                  className="bg-sky-500 text-white px-4 py-2 rounded hover:bg-sky-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={isLoading}
+                >
+                  {isStarted ? 'Next' : 'Start'}
+              </button>            
+            </div>  
+            <textarea
+              className="flex-1 text-gray-800 p-2 border border-gray-300  rounded "
+              // value={inputAnswerText}
+              onChange={e => {handleReviewAnswerInputChange(e); setInpuAnswerText(e.target.value)}}
+              placeholder=""
+              rows={3}
+            />
+            {isLoadingReview ? (
+              <button
+                onClick={reviewStop}
+                className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-red-600 transition-colors"
+              >
+                Stop
+              </button>
+            ) : (
+              <button
+                type="submit"
+                name="send"
+                className="bg-sky-500 text-white px-4 py-2 rounded hover:bg-sky-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={isLoadingReview || !inputAnswerText.trim()}
+              >
+                Send
+              </button>
+            )}
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCompletion } from "@ai-sdk/react";
-import React, { FormEvent, useEffect, useTransition } from "react";
+import React, { FormEvent, useEffect } from "react";
 import { useScore } from "./contexts/ScoreContext";
 
 export default function CompletionStreamPage() {
@@ -9,6 +9,7 @@ export default function CompletionStreamPage() {
 
   const {
     completion: generatedQuestionCompletion,
+    setCompletion: setGeneratedQuestionCompletion,
     setInput: setInputGenerateQuestion,
     handleSubmit: handleSubmitGenerateQuestion,
     isLoading,
@@ -39,13 +40,12 @@ export default function CompletionStreamPage() {
   const [generatedNewQuestion, setGeneratedNewQuestion] =  React.useState('');
   const [isAnswerCorrect, setIsAnswerCorrect] =  React.useState<boolean | null>(null);
   const [isStarted, setIsStarted] =  React.useState(false);
-  const [isPending, startTransition] = useTransition();
 
   const handleFormSubmit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
  
     const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | HTMLInputElement;
-    console.log('Form submitted submitter.name:', submitter.name);
+
     if (submitter.name === "generate") {
       console.log('generating question..'); 
       setReviewCompletion('');
@@ -55,14 +55,9 @@ export default function CompletionStreamPage() {
       setIsAnswerCorrect(null);
       setInpuAnswerText('');
       handleSubmitGenerateQuestion(event);
-    } else {      
-      const reviewAnswer = generatedNewQuestion + " review my answer quickly:" + inputAnswerText + ". And please indicate in last sentence if my answer is correct or incorrect.";
-      console.log('review answer:', reviewAnswer);
-      setAnswerInput(reviewAnswer);
-      
-      startTransition(() => {
-        handleSubmitReviewAnswer(event);
-      });
+    } else {    
+      handleSubmitReviewAnswer(event);
+      setInpuAnswerText('');
     }  };
 
   const handleReset = () => {
@@ -72,8 +67,14 @@ export default function CompletionStreamPage() {
     setInpuAnswerText(''); 
     setReviewCompletion('');
     setGeneratedNewQuestion('');
-
+     setGeneratedQuestionCompletion('');
   };
+
+  const handleInputAswerChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInpuAnswerText(event.target.value);
+    const reviewAnswer = generatedNewQuestion + " make a quick review my answer is " + event.target.value + ". And please indicate in last sentence if my answer is correct or incorrect.";
+    setAnswerInput(reviewAnswer);
+  }
 
   useEffect(() => {
     if (levelSelected === 1) {
@@ -81,44 +82,33 @@ export default function CompletionStreamPage() {
       setInputGenerateQuestion('generate a single question for a Primary 5 student. The question should be straightforward and no introduction.');
     } else if (levelSelected === 2) {
       console.log('Level 2 selected');
-      setInputGenerateQuestion('generate single math word problem suitable for a Primary 5 student.');
+      setInputGenerateQuestion('generate single math word problem suitable for a Primary 5 student. The question should be straightforward and no introduction.');
     } else if (levelSelected === 3) {
       console.log('Level 3 selected');
-      setInputGenerateQuestion('generate single math word problem or general information quiz suitable for a Primary 5 student.'); // Please do not include my question in the generated question.
+      setInputGenerateQuestion('generate single math word problem or general information quiz suitable for a Primary 5 student. The question should be straightforward and no introduction.'); // Please do not include my question in the generated question.
     }
-   
+    handleReset();
   },[levelSelected, setInputGenerateQuestion]);
 
   useEffect(() => {
     if (isLoadingReview === false && reviewCompletion) {
-      console.log('Clearing answer text after review completion');
-      const isCorrect = reviewCompletion.toLowerCase().slice(-15).includes('correct');
+      const isCorrect = !reviewCompletion.toLowerCase().slice(-15).includes('incorrect');
       setIsAnswerCorrect(isCorrect);
       
-      // Update score if answer is correct
       if (isCorrect) {
         incrementScore();
-        console.log('Answer was correct! Score incremented.');
-      } else {
-        console.log('Answer was incorrect. Score not changed.');
+        console.log('Answer was correct! Score incremented.'); 
       }
-      
-      setInpuAnswerText('');
     }
-  }, [isLoadingReview]); //, incrementScore, setIsAnswerCorrect
-
-  // useEffect(() => {
-  //   console.log('Generated Question:', generatedQuestionCompletion);
-  //   setGeneratedNewQuestion(generatedQuestionCompletion || '');
-  // }, [generatedQuestionCompletion]);
+  }, [isLoadingReview]);
 
   useEffect(() => {
     if (totalQuestions === 0) {
       setIsStarted(false);
     } else if (totalQuestions == 1) {
       setIsStarted(true)
-      setIsAnswerCorrect(null); // Reset correctness indicator for new question
-      setInpuAnswerText(''); // Clear previous answer
+      setIsAnswerCorrect(null);
+      setInpuAnswerText('');
     }
   }, [totalQuestions]);
 
@@ -177,15 +167,15 @@ export default function CompletionStreamPage() {
             </div>  
             <textarea
               className="flex-1 text-gray-800 p-2 border border-gray-300  rounded "
-              // value={inputAnswerText}
-              onChange={e => {handleReviewAnswerInputChange(e); setInpuAnswerText(e.target.value)}}
+              value={inputAnswerText}
+              onChange={e => handleInputAswerChange(e)}
               placeholder=""
               rows={3}
             />
             {isLoadingReview ? (
               <button
                 onClick={reviewStop}
-                className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-red-600 transition-colors"
+                className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 transition-colors"
               >
                 Stop
               </button>

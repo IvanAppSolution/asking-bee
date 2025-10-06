@@ -21,6 +21,6 @@ export async function POST(request: Request) {
     console.error('Error in generate-question:', error);
     return new Response('Error processing request', { status: 500 });
   } finally {
-    console.log('Final result object:', result);
+    // console.log('Final result object:', result);
   }
 }

@@ -19,7 +19,7 @@ export async function POST(request: Request) {
     console.error('Error in review-answer:', error);
     return new Response('Error processing request', { status: 500 });
   } finally {
-    console.log('Final result object:', result);
+    // console.log('Final result object:', result);
 
   }
 }
